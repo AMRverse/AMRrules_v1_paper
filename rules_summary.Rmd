@@ -192,10 +192,11 @@ gene_level_plot <- core_gene_presence %>% count(org, gene, `clinical category`) 
   ggplot(aes(y=org, x=n, fill=anyNotR)) + 
   geom_col() + theme_bw() + 
   labs(y=NULL, x="Unique genes", fill="Interpretation/s\nper gene") + 
-  ggtitle("Unique core genes") + 
+  ggtitle("Core genes") + 
+  theme(axis.text.y = element_text(face = "italic")) +
   scale_fill_manual(values=c(`other`="skyblue", `R`="#ED553B"))
 
-gene_level_plot + gene_presence_plot + theme(axis.text.y = element_blank()) + plot_layout(widths=c(2,6))
+gene_level_plot + gene_presence_plot + theme(axis.text.y = element_blank()) + plot_layout(guides="collect", widths=c(2,6))
 
 ggsave(file="Core_gene_pheno_by_spp.pdf", width=8, height=5)
 ggsave(file="Core_gene_pheno_by_spp.png", width=8, height=5)
