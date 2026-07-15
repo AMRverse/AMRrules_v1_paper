@@ -1,0 +1,349 @@
+---
+title: "AMRrules rule summary"
+output: html_document
+date: "2026-07-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(AMRgen)
+```
+
+``` {r}
+files <- list.files("..//AMRrules/rules/", pattern = "\\.tsv$", full.names = TRUE)
+
+rules <- files %>%
+  map(~ read_tsv(.x, col_types = cols(PMID = col_character()))) %>%
+  bind_rows()
+
+rules <- rules %>% mutate(org=sub("s__", "", organism)) %>% mutate(org=sub("g__", "", org)) %>%
+  mutate(type=paste(phenotype, `clinical category`)) %>% 
+  mutate(type=fct_relevel(type, "wildtype -", "wildtype S", "wildtype I", "wildtype R", "nonwildtype S", "nonwildtype I", "nonwildtype R", "- -"))
+
+```
+
+``` {r}
+
+# number of rules
+dim(rules)
+
+# number of organisms
+length(unique(rules$org))
+
+rules %>% count(`gene context`, `variation type`)
+
+rules %>% count(`gene context`, `variation type`, `clinical category`, phenotype)
+
+refgene <- read_tsv("refgenes_20032026.tsv")
+
+refgene %>% count(Type, Subtype)
+refgene %>% mutate(pmid=if_else(is.na(`Pubmed reference`), FALSE, TRUE)) %>% count(Type, Subtype, pmid)
+
+rulesx <- rules
+#rulesx <- rules %>% filter(organism !="s__Neisseria gonorrhoeae")
+
+type_scale <- c("- -"="white", 
+                "wildtype -"="grey",
+                "wildtype S"="#3CAEA3",
+                "wildtype I"="#F6D55C",
+                "wildtype R"="#ED553B", 
+                "nonwildtype S"="#61b5cf",
+                "nonwildtype I"="#f0dcb6",
+                "nonwildtype R"="#fa9c8c"
+                )
+  
+# core gene detection rules
+core_gene_presence <- rulesx %>% filter(`variation type`=="Gene presence detected" & `gene context`=="core")
+
+# number per outcome
+core_gene_presence %>% count(phenotype, `clinical category`)
+
+# number of unique core genes with rules
+core_gene_presence %>% count(gene, org) %>% nrow()
+
+# number of unique core genes with rules, by org
+core_gene_presence %>% count(gene, org) %>% select(-n) %>% ungroup() %>% count(org)
+
+# number of unique core genes with rules encoded at drug level
+core_gene_presence %>% filter(drug!="-") %>% count(gene)
+core_gene_presence %>% filter(drug!="-") %>% count(drug) 
+core_gene_presence %>% filter(drug!="-") %>% count(org) 
+
+# number of unique core genes with rules encoded at drug class level
+core_gene_presence %>% filter(`drug class`!="-") %>% count(gene)
+core_gene_presence %>% filter(`drug class`!="-") %>% count(`drug class`) 
+core_gene_presence %>% filter(`drug class`!="-") %>% count(org) 
+
+# number of core gene detection rules with each interpretation
+core_gene_presence %>% count(phenotype, `clinical category`)
+
+# number of unique core genes with rules encoded as each type
+core_gene_presence %>% filter(phenotype=="wildtype" & `clinical category`=="S") %>% count(gene)
+core_gene_presence %>% filter(phenotype=="wildtype" & `clinical category`=="I") %>% count(gene)
+core_gene_presence %>% filter(phenotype=="wildtype" & `clinical category`=="R") %>% count(gene)
+core_gene_presence %>% filter(phenotype=="wildtype" & `clinical category`=="S") %>% count(org)
+core_gene_presence %>% filter(phenotype=="wildtype" & `clinical category`=="I") %>% count(org)
+core_gene_presence %>% filter(phenotype=="wildtype" & `clinical category`=="R") %>% count(org)
+
+# species with core gene detection rules
+core_gene_presence %>% count(org) %>% write_tsv("Core_gene_detection_rules_by_taxa.tsv")
+
+# core gene rules, bug vs drug
+core_gene_presence %>% count(org, drug) %>% arrange(drug) %>% ggplot(aes(x=drug, y=org, fill=n)) + geom_tile()
+
+# FIGURE: print number of genes per bug/drug, and colour fraction of rules that are WT R
+num_coregenes_per_bug_drug <- core_gene_presence %>% select(org, drug, gene) %>% distinct() %>% count(org, drug)
+num_coregenerules_per_bug_drug_pheno <- core_gene_presence %>% count(org, drug, phenotype, `clinical category`)
+
+propR_coregenerules_per_bug_drug_pheno <- num_coregenerules_per_bug_drug_pheno %>% filter(phenotype=="wildtype") %>%
+  pivot_wider(names_from=`clinical category`, values_from = n, values_fill = 0) %>% mutate(N=R+S+I+`-`) %>% mutate(pR=R/N) %>% mutate(pI=I/N) %>% left_join(num_coregenes_per_bug_drug %>% rename(genes=n)) %>% mutate(pheno=case_when(R>0 ~ "R", I>0 ~ "I", S>0 ~ "S", TRUE ~ "-"))
+
+propR_coregenerules_per_bug_drug_pheno 
+
+# same for drug class
+num_coregenes_per_bug_drugclass <- core_gene_presence %>% select(org, `drug class`, gene) %>% distinct() %>% count(org, `drug class`)
+num_coregenerules_per_bug_drugclass_pheno <- core_gene_presence %>% count(org, `drug class`, phenotype, `clinical category`)
+
+propR_coregenerules_per_bug_drugclass_pheno <- num_coregenerules_per_bug_drugclass_pheno %>% filter(phenotype=="wildtype") %>%
+  pivot_wider(names_from=`clinical category`, values_from = n, values_fill = 0) %>% mutate(N=R+S+I+`-`) %>% mutate(pR=R/N) %>% mutate(pI=I/N) %>% left_join(num_coregenes_per_bug_drugclass %>% rename(genes=n)) %>% mutate(pheno=case_when(R>0 ~ "R", I>0 ~ "I", S>0 ~ "S", TRUE ~ "-"))
+
+propR_coregenerules_per_bug_drugclass_pheno 
+
+# confirm there are no cases where some rules are I and some are R
+propR_coregenerules_per_bug_drugclass_pheno %>% filter(pR>0 & pI>0)
+propR_coregenerules_per_bug_drug_pheno %>% filter(pR>0 & pI>0)
+
+
+pheno_scale <- c("-"="grey", 
+                "S"="#3CAEA3",
+                "I"="#F6D55C",
+                "R"="#ED553B"
+                )
+
+drug_heatmap <- propR_coregenerules_per_bug_drug_pheno %>% filter(drug!="-") %>% mutate(org = fct_rev(org)) %>% ggplot(aes(x=drug, y=org, fill=pheno)) + geom_tile() + geom_text(aes(label=genes)) + theme_bw() + theme(axis.text.x = element_text(angle=45, hjust=1, size=8), 
+          axis.text.y=element_text(size=10), legend.position="none") + labs(y=NULL, x="Drug") + scale_fill_manual(values=pheno_scale)
+
+drugclass_heatmap <- propR_coregenerules_per_bug_drugclass_pheno %>% filter(`drug class`!="-") %>% mutate(org = fct_rev(org)) %>% ggplot(aes(x=`drug class`, y=org, fill=pheno)) + geom_tile() + geom_text(aes(label=genes)) + theme_bw() + theme(axis.text.x = element_text(angle=45, hjust=1, size=8), 
+          axis.text.y=element_text(size=10)) + labs(y=NULL, x="Drug class", fill="Interpretation") + scale_fill_manual(values=pheno_scale)
+
+# combine drug and class
+drug_heatmap + drugclass_heatmap + theme(axis.text.y = element_blank()) + plot_layout(guides="collect", widths=c(4,1))
+
+ggsave(file="Core_gene_pheno_by_bug_drug.pdf", width=14, height=6)
+ggsave(file="Core_gene_pheno_by_bug_drug.png", width=14, height=6)
+
+
+# transpose to fit
+drug_heatmap_transpose <- propR_coregenerules_per_bug_drug_pheno %>% 
+  filter(drug!="-") %>% 
+  mutate(drug = fct_rev(drug)) %>% 
+  ggplot(aes(y=drug, x=org, fill=pheno)) + 
+  geom_tile() + 
+  geom_text(aes(label=genes)) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle=45, hjust=0, size=8), 
+        axis.text.y=element_text(size=10), 
+        legend.position="none") + 
+  labs(x=NULL, y=NULL) + 
+  scale_fill_manual(values=pheno_scale) + 
+  scale_x_discrete(position = "top")
+
+drugclass_heatmap_transpose <- propR_coregenerules_per_bug_drugclass_pheno %>% 
+  filter(`drug class`!="-") %>% 
+  mutate(`drug class` = fct_rev(`drug class`)) %>% 
+  ggplot(aes(y=`drug class`, x=org, fill=pheno)) + 
+  geom_tile() + 
+  geom_text(aes(label=genes)) + 
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle=45, hjust=0, size=8), 
+        axis.text.y=element_text(size=10)) + 
+  labs(x=NULL, y=NULL, fill="Interpretation") + 
+  scale_fill_manual(values=pheno_scale) + 
+  scale_x_discrete(position = "top")
+
+# combine drug and class
+drug_heatmap_transpose / drugclass_heatmap_transpose + theme(axis.text.x = element_blank()) + plot_layout(guides="collect", heights=c(4,1))
+
+ggsave(file="Core_gene_pheno_by_bug_drug_transpose.pdf", width=9, height=12)
+ggsave(file="Core_gene_pheno_by_bug_drug_transpose.png", width=9, height=12)
+
+```
+
+``` {r}
+gene_presence_plot <- core_gene_presence %>% count(org, `clinical category`) %>%
+  ggplot(aes(x=n, y=fct_rev(org), fill=`clinical category`)) + 
+  geom_col() + 
+  scale_fill_manual(values=pheno_scale) + 
+  theme_bw() + 
+  ggtitle("Core gene detection rules") + labs(y=NULL, x="Unique rules", fill="Interpretation\nper rule")
+
+gene_presence_plot
+
+# FIGURE: number of unique core genes per species
+unique_gene_count <- core_gene_presence %>% select(org, gene) %>% 
+  distinct() %>% 
+  count(org) %>% 
+  mutate(org = fct_rev(org)) %>%
+  ggplot(aes(y=org, x=n)) + 
+  geom_col() + theme_bw() + labs(y=NULL, x="Unique genes")
+
+gene_level_plot <- core_gene_presence %>% count(org, gene, `clinical category`) %>% pivot_wider(names_from=`clinical category`, values_from = n, values_fill = 0) %>% mutate(notR=S+I+`-`) %>% mutate(anyNotR=if_else(notR>0,"other","R")) %>% count(org, anyNotR) %>% mutate(org = fct_rev(org)) %>% 
+  ggplot(aes(y=org, x=n, fill=anyNotR)) + 
+  geom_col() + theme_bw() + 
+  labs(y=NULL, x="Unique genes", fill="Interpretation/s\nper gene") + 
+  ggtitle("Unique core genes") + 
+  scale_fill_manual(values=c(`other`="skyblue", `R`="#ED553B"))
+
+gene_level_plot + gene_presence_plot + theme(axis.text.y = element_blank()) + plot_layout(widths=c(2,6))
+
+ggsave(file="Core_gene_pheno_by_spp.pdf", width=8, height=5)
+ggsave(file="Core_gene_pheno_by_spp.png", width=8, height=5)
+```
+
+``` {r}
+
+# protein variant detection rules (all are in core genes, note Yersinia gyrA mutations were incorrectly coded as acquired but we can ignore gene context)
+protein_variant <- rulesx %>% filter(`variation type`=="Protein variant detected")
+
+protein_variant_type_scale <- c(
+                "nonwildtype S"="#3CAEA3",
+                "nonwildtype I"="#F6D55C",
+                "nonwildtype R"="#ED553B", 
+                "wildtype S"="black"
+                )
+
+protein_variant_plot <- protein_variant %>% count(org, type) %>%
+  ggplot(aes(x=n, y=org, fill=type)) + 
+  geom_col() + 
+  scale_fill_manual(values=type_scale) + theme_bw() + 
+  ggtitle("Rules for protein variants in core genes")
+
+protein_variant_plot
+
+# Inactivating mutation detected
+inactivating_variant <- rulesx %>% filter(`variation type`=="Inactivating mutation detected")
+
+inactivating_variant %>% count(phenotype, `clinical category`)
+
+inactivating_variant_type_scale <- c(
+                "nonwildtype S"="#3CAEA3",
+                "nonwildtype I"="#F6D55C",
+                "nonwildtype R"="#ED553B", 
+                "wildtype S"="black"
+                )
+
+inactivating_variant_plot <- inactivating_variant %>% 
+  count(org, type) %>%
+  ggplot(aes(x=n, y=org, fill=type)) + 
+  geom_col() + 
+  scale_fill_manual(values=type_scale) + theme_bw() + 
+  ggtitle("Rules for inactivating mutations in core genes")
+
+inactivating_variant_plot
+
+# other types of variants
+other_rules <- rulesx %>% 
+  filter(!(`variation type` %in% c("Gene presence detected",
+                                   "Inactivating mutation detected", 
+                                   "Protein variant detected")))
+         
+other_rules %>% count(`variation type`, phenotype, `clinical category`)
+
+# type of variation, by interpretation, for rules OTHER THAN core gene detection
+rules_besides_coregenedetection <- rulesx %>% 
+  filter(!(`gene context`=="core" & `variation type`=="Gene presence detected")) 
+
+# number of rules other than core gene detection
+nrow(rules_besides_coregenedetection)
+
+# percentage per type
+rules_besides_coregenedetection %>% count(`variation type`) %>% mutate(pct=n/nrow(rules_besides_coregenedetection)*100)
+
+# percentage per call
+rules_besides_coregenedetection %>% count(phenotype, `clinical category`) %>% mutate(pct=n/nrow(rules_besides_coregenedetection)*100)
+
+rules_besides_coregenedetection %>%
+  count(`variation type`, type) %>%
+  filter(!(`variation type`=="-")) %>%
+  ggplot(aes(x=n, y=`variation type`, fill=type)) + 
+  geom_col() + 
+  scale_fill_manual(values=type_scale) + theme_bw() + 
+  ggtitle("Rules other than core gene presence")
+
+rules_besides_coregenedetection %>%
+  count(org, type) %>%
+  ggplot(aes(x=n, y=fct_rev(org), fill=type)) + 
+  geom_col() + 
+  scale_fill_manual(values=type_scale) + theme_bw() + 
+  ggtitle("Rules other than core gene presence")
+
+```
+
+``` {r}
+ng <- rules %>% filter(organism =="s__Neisseria gonorrhoeae")
+
+# number of rules
+dim(ng)
+
+ng %>% count(`variation type`) %>% 
+  mutate(pct=n/nrow(ng)*100)
+
+ng %>% count(`clinical category`, phenotype) %>% 
+  mutate(pct=n/nrow(ng)*100)
+
+ng %>% count(`variation type`, `clinical category`, phenotype) %>% 
+  mutate(pct=n/nrow(ng)*100)
+
+ng_rules_by_type <- ng %>% count(`variation type`, `clinical category`, phenotype) %>% 
+  mutate(type=paste(phenotype, `clinical category`)) %>% 
+  mutate(type=fct_relevel(type, "nonwildtype S", "nonwildtype I", "nonwildtype R", "wildtype S", "wildtype I", "wildtype R", "wildtype -", "- -")) %>%
+  ggplot(aes(x=n, y=`variation type`, fill=type)) + 
+  geom_col() + 
+  scale_fill_manual(values=type_scale) + theme_bw() 
+
+ng_rules_by_drug <- ng %>% mutate(drug_group=if_else(drug!="-", drug, `drug class`)) %>%
+  count(drug_group, `clinical category`, phenotype) %>% 
+  mutate(type=paste(phenotype, `clinical category`)) %>% 
+  mutate(type=fct_relevel(type, "nonwildtype S", "nonwildtype I", "nonwildtype R", "wildtype S", "wildtype I", "wildtype R", "wildtype -", "- -")) %>%
+  ggplot(aes(x=n, y=fct_rev(drug_group), fill=type)) + 
+  geom_col() + 
+  scale_fill_manual(values=type_scale) + theme_bw()
+
+ng_rules_by_type / ng_rules_by_drug + plot_layout(guides="collect")
+```
+
+``` {r}
+ab <- rules %>% filter(organism =="s__Acinetobacter baumannii")
+
+# number of rules
+dim(ab)
+
+ab %>% count(`variation type`) %>% 
+  mutate(pct=n/nrow(ab)*100)
+
+ab %>% count(`clinical category`, phenotype) %>% 
+  mutate(pct=n/nrow(ab)*100)
+
+ab %>% count(`variation type`, `clinical category`, phenotype) %>% 
+  mutate(pct=n/nrow(ab)*100)
+
+ab_rules_by_type <- ab %>% count(`variation type`, `clinical category`, phenotype) %>% 
+  mutate(type=paste(phenotype, `clinical category`)) %>% 
+  mutate(type=fct_relevel(type, "nonwildtype S", "nonwildtype I", "nonwildtype R", "wildtype S", "wildtype I", "wildtype R", "wildtype -", "- -")) %>%
+  ggplot(aes(x=n, y=`variation type`, fill=type)) + 
+  geom_col() + 
+  scale_fill_manual(values=type_scale) + theme_bw() 
+
+ab_rules_by_drug <- ab %>% 
+  mutate(drug_group=if_else(drug!="-", drug, `drug class`)) %>%
+  filter(drug_group!="-") %>%
+  count(drug_group, `clinical category`, phenotype) %>% 
+  mutate(type=paste(phenotype, `clinical category`)) %>% 
+  mutate(type=fct_relevel(type, "nonwildtype S", "nonwildtype I", "nonwildtype R", "wildtype S", "wildtype I", "wildtype R", "wildtype -", "- -")) %>%
+  ggplot(aes(x=n, y=fct_rev(drug_group), fill=type)) + 
+  geom_col() + 
+  scale_fill_manual(values=type_scale) + theme_bw()
+
+ab_rules_by_type / ab_rules_by_drug + plot_layout(guides="collect")
+```
