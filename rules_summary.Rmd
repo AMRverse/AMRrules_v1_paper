@@ -314,11 +314,25 @@ ng_rules_by_drug <- ng %>% mutate(drug_group=if_else(drug!="-", drug, `drug clas
 ng_rules_by_type / ng_rules_by_drug + plot_layout(guides="collect")
 ```
 
+# Acinetobacter
 ``` {r}
 ab <- rules %>% filter(organism =="s__Acinetobacter baumannii")
 
 # number of rules
 dim(ab)
+
+# number of acquired beta-lactamase rules, by family
+ab %>% filter(`variation type`=="Gene presence detected" & `gene context`=="acquired") %>% mutate(bla_fam=str_sub(gene, 1, 6)) %>% count(bla_fam)
+
+ab %>% filter(`variation type`=="Gene presence detected" & `gene context`=="acquired") %>% mutate(bla_fam=str_sub(gene, 1, 6)) %>% count(bla_fam, `clinical category`, phenotype)
+
+
+# number of acquired beta-lactamase rules, by family
+ab %>% filter(drug=="ciprofloxacin") %>% count(`variation type`, gene)
+
+ab %>% filter(`variation type`=="Gene presence detected" & `gene context`=="acquired") %>% mutate(bla_fam=str_sub(gene, 1, 6)) %>% count(bla_fam, `clinical category`, phenotype)
+
+
 
 ab %>% count(`variation type`) %>% 
   mutate(pct=n/nrow(ab)*100)
@@ -347,4 +361,54 @@ ab_rules_by_drug <- ab %>%
   scale_fill_manual(values=type_scale) + theme_bw()
 
 ab_rules_by_type / ab_rules_by_drug + plot_layout(guides="collect")
+```
+
+
+# E. coli
+``` {r}
+ec <- rules %>% filter(organism =="s__Escherichia coli")
+
+# number of rules
+dim(ec)
+
+# number of acquired beta-lactamase rules, by family
+ec %>% filter(`variation type`=="Gene presence detected" & `gene context`=="acquired") %>% mutate(bla_fam=str_sub(gene, 1, 6)) %>% count(bla_fam)
+
+ec %>% filter(`variation type`=="Gene presence detected" & `gene context`=="acquired") %>% mutate(bla_fam=str_sub(gene, 1, 6)) %>% count(bla_fam, `clinical category`, phenotype)
+
+
+# number of acquired beta-lactamase rules, by family
+ec %>% filter(drug=="ciprofloxacin") %>% count(`variation type`, gene)
+
+ec %>% filter(`variation type`=="Gene presence detected" & `gene context`=="acquired") %>% mutate(bla_fam=str_sub(gene, 1, 6)) %>% count(bla_fam, `clinical category`, phenotype)
+
+
+
+ec %>% count(`variation type`) %>% 
+  mutate(pct=n/nrow(ec)*100)
+
+ec %>% count(`clinical category`, phenotype) %>% 
+  mutate(pct=n/nrow(ec)*100)
+
+ec %>% count(`variation type`, `clinical category`, phenotype) %>% 
+  mutate(pct=n/nrow(ec)*100)
+
+ec_rules_by_type <- ec %>% count(`variation type`, `clinical category`, phenotype) %>% 
+  mutate(type=paste(phenotype, `clinical category`)) %>% 
+  mutate(type=fct_relevel(type, "nonwildtype S", "nonwildtype I", "nonwildtype R", "wildtype S", "wildtype I", "wildtype R", "wildtype -", "- -")) %>%
+  ggplot(aes(x=n, y=`variation type`, fill=type)) + 
+  geom_col() + 
+  scale_fill_manual(values=type_scale) + theme_bw() 
+
+ec_rules_by_drug <- ec %>% 
+  mutate(drug_group=if_else(drug!="-", drug, `drug class`)) %>%
+  filter(drug_group!="-") %>%
+  count(drug_group, `clinical category`, phenotype) %>% 
+  mutate(type=paste(phenotype, `clinical category`)) %>% 
+  mutate(type=fct_relevel(type, "nonwildtype S", "nonwildtype I", "nonwildtype R", "wildtype S", "wildtype I", "wildtype R", "wildtype -", "- -")) %>%
+  ggplot(aes(x=n, y=fct_rev(drug_group), fill=type)) + 
+  geom_col() + 
+  scale_fill_manual(values=type_scale) + theme_bw()
+
+ec_rules_by_type / ec_rules_by_drug + plot_layout(guides="collect")
 ```
