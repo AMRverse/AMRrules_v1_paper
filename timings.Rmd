@@ -70,3 +70,20 @@ associated_rulecount <- org_summary %>% ggplot(aes(x=n_rules, y=sec_per_1000, la
 ggsave("Runtime_figure.pdf", width=10.5, height=8)
 ggsave("Runtime_figure.png", width=10.5, height=8)
 ```
+
+# regression lines
+``` {r} 
+regressions <- times %>% 
+  filter(size==1000) %>%
+  group_by(organism) %>%
+  summarise({
+    mod <- lm(elapsed_sec ~ amr_marker_count)
+    tibble(
+      slope = coef(mod)[["amr_marker_count"]],
+      r.squared = summary(mod)$r.squared,
+      p.value = summary(mod)$coefficients["amr_marker_count", "Pr(>|t|)"]
+    )
+  })
+
+write_tsv(regressions, "Additional_file_6_regressions.tsv")
+```
