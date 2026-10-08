@@ -1,0 +1,52 @@
+---
+title: "AMRrules timings"
+output: html_document
+date: "2026-10-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+``` {r}
+times <- read_tsv("AMRrules_timings.tsv") %>% 
+  mutate(organism = case_when(organism=="Abaumannii" ~ "A. baumannii",
+                              organism=="Cjejuni" ~ "C. jejuni",
+                              organism=="Ecoli" ~ "E. coli",
+                              organism=="Efaecalis" ~ "E. faecalis",
+                              organism=="Efaecium" ~ "E. faecium",
+                              organism=="Kpneumoniae" ~ "K. pneumoniae",
+                              organism=="Ngono" ~ "N. gonorrhoeae",
+                              organism=="Paeruginosa" ~ "P. aeruginosa",
+                              organism=="Saureus" ~ "S. aureus",
+                              organism=="Senterica" ~ "S. enterica"
+                              ))
+
+# shape of runtime curve per organism
+linear_per_orgn <- times %>% ggplot(aes(x=size, y=elapsed_sec, colour=organism)) + geom_point() + geom_smooth(method = "lm", se = FALSE) + theme_bw()
+
+# impact of number of markers on runtime, within each organism (which each have a unique but fixed rule count)
+not_lineat_per_marker_withinorg <- times %>% filter(size==1000) %>% ggplot(aes(x=amr_marker_count, y=elapsed_sec, colour=organism)) + geom_point() + geom_smooth(method = "lm", se = FALSE) + theme_bw()
+
+# summarise times one row per organism
+org_summary <- times %>%
+    filter(status == 0) %>%
+    group_by(organism, n_rules) %>%
+    summarise(
+        sec_per_1000       = coef(lm(elapsed_sec ~ size))[["size"]] * 1000,
+        sec_per_marker      = coef(lm(elapsed_sec ~ amr_marker_count))[["amr_marker_count"]] * 1000,
+        sec_per_matched      = coef(lm(elapsed_sec ~ markers_matched))[["markers_matched"]] * 1000,
+        amr_per_sample     = mean(amr_marker_count/samples_processed),
+        matched_per_sample = mean(markers_matched/samples_processed),
+        prop_matched       = mean(markers_matched/amr_marker_count),
+        .groups = "drop"
+    )
+
+associated_rulecount <- org_summary %>% ggplot(aes(x=n_rules, y=sec_per_1000, label=organism)) + 
+  geom_point() + 
+  geom_text(vjust = -0.7, size = 3) +
+  geom_smooth(method = "lm", se = FALSE) + 
+  theme_bw()
+```
+
