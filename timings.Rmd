@@ -24,29 +24,49 @@ times <- read_tsv("AMRrules_timings.tsv") %>%
                               ))
 
 # shape of runtime curve per organism
-linear_per_orgn <- times %>% ggplot(aes(x=size, y=elapsed_sec, colour=organism)) + geom_point() + geom_smooth(method = "lm", se = FALSE) + theme_bw()
+linear_per_orgn <- times %>% ggplot(aes(x=size, y=elapsed_sec, colour=organism)) + geom_point() + geom_smooth(method = "lm", se = FALSE, linewidth=0.5) + theme_bw() + labs(x="No. samples", y="Time (s)", colour="Organism", title="a) Runtime vs number of samples, stratified by organism") 
 
 # impact of number of markers on runtime, within each organism (which each have a unique but fixed rule count)
-not_lineat_per_marker_withinorg <- times %>% filter(size==1000) %>% ggplot(aes(x=amr_marker_count, y=elapsed_sec, colour=organism)) + geom_point() + geom_smooth(method = "lm", se = FALSE) + theme_bw()
+not_linear_per_marker_withinorg <- times %>% 
+  filter(size==1000) %>% 
+  ggplot(aes(x=amr_marker_count, y=elapsed_sec, group=organism)) + 
+  geom_point(aes(colour=organism)) + 
+  geom_smooth(method = "lm", se = FALSE, colour="black", linewidth=0.5) + 
+  theme_bw() +
+  theme(legend.position="none") + 
+  xlim(c(0,20000)) + ylim(1.8,4)+
+  labs(x="No. AMR markers", y="Time (s)", title="c) Runtime vs no. AMR markers", subtitle="for subsets of n=1000 samples")
 
 # summarise times one row per organism
 org_summary <- times %>%
-    filter(status == 0) %>%
+    filter(status == 0 & size==1000) %>%
     group_by(organism, n_rules) %>%
     summarise(
-        sec_per_1000       = coef(lm(elapsed_sec ~ size))[["size"]] * 1000,
-        sec_per_marker      = coef(lm(elapsed_sec ~ amr_marker_count))[["amr_marker_count"]] * 1000,
-        sec_per_matched      = coef(lm(elapsed_sec ~ markers_matched))[["markers_matched"]] * 1000,
-        amr_per_sample     = mean(amr_marker_count/samples_processed),
-        matched_per_sample = mean(markers_matched/samples_processed),
-        prop_matched       = mean(markers_matched/amr_marker_count),
+        sec_per_1000 = mean(elapsed_sec),
         .groups = "drop"
     )
 
-associated_rulecount <- org_summary %>% ggplot(aes(x=n_rules, y=sec_per_1000, label=organism)) + 
+# time vs number of rules, for subsets of 1000 samples
+lm_time_rules <- lm(sec_per_1000 ~ n_rules, data=org_summary)
+
+summary(lm_time_rules)
+
+time_rules <- coef(lm_time_rules)
+
+associated_rulecount <- org_summary %>% ggplot(aes(x=n_rules, y=sec_per_1000, label=organism, colour=organism)) + 
+  geom_abline(intercept=time_rules[["(Intercept)"]], slope=time_rules[["n_rules"]], linetype=2, colour="grey") + 
   geom_point() + 
-  geom_text(vjust = -0.7, size = 3) +
-  geom_smooth(method = "lm", se = FALSE) + 
-  theme_bw()
+  geom_text(hjust=-0.1, size = 3) +
+  theme_bw() +
+  theme(legend.position="none") + 
+  xlim(c(0,500)) + ylim(1.8,4)+
+  labs(x="No. rules defined", y="Time (s)", title="b) Runtime vs no. rules defined", subtitle="for subsets of n=1000 samples")
+  
+
+(linear_per_orgn / ( associated_rulecount + not_linear_per_marker_withinorg)) + plot_layout(guides="collect")
 ```
 
+``` {r}
+ggsave("Runtime_figure.pdf", width=10.5, height=8)
+ggsave("Runtime_figure.png", width=10.5, height=8)
+```
